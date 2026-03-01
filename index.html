@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Workout Log">
+  <title>Workout Log</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">WORKOUT LOG</p>
+        <h1>クラウド保存 + GitHub蓄積</h1>
+        <p class="muted" id="syncStatus">保存先: Supabase / GitHub反映は自動同期</p>
+      </div>
+      <div class="header-actions">
+        <button id="signOutBtn" class="ghost hidden" type="button">ログアウト</button>
+      </div>
+    </header>
+
+    <section class="panel" id="setupPanel">
+      <div class="panel-header compact">
+        <div>
+          <h2>セットアップ確認</h2>
+          <p class="muted">config.js の Supabase URL / key を入れると使えます。</p>
+        </div>
+      </div>
+      <p id="setupStatus" class="muted"></p>
+    </section>
+
+    <section class="panel" id="authPanel">
+      <div class="panel-header compact">
+        <div>
+          <h2>ログイン</h2>
+          <p class="muted">最初に1回だけ。以後はセッション維持。</p>
+        </div>
+      </div>
+      <div class="grid two">
+        <label>
+          <span>メールアドレス</span>
+          <input id="emailInput" type="email" autocomplete="username" placeholder="you@example.com">
+        </label>
+        <label>
+          <span>パスワード</span>
+          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="********">
+        </label>
+      </div>
+      <div class="action-row single">
+        <button id="signInBtn" class="primary" type="button">ログイン</button>
+      </div>
+      <p class="muted">このアプリは保存ボタンを押したときだけクラウド保存します。</p>
+    </section>
+
+    <main id="appMain" class="hidden">
+      <section class="panel" id="todayPanel">
+        <div class="panel-header">
+          <div>
+            <h2>今日の記録</h2>
+            <p class="muted">1種目ずつ追加して最後に保存</p>
+          </div>
+          <div class="panel-actions">
+            <button id="newSessionBtn" class="ghost" type="button">新規</button>
+            <button id="duplicateLastBtn" class="ghost" type="button">前回複製</button>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <label>
+            <span>日付</span>
+            <input id="sessionDate" type="date">
+          </label>
+          <label>
+            <span>体重(kg)</span>
+            <input id="bodyweight" type="number" step="0.1" inputmode="decimal" placeholder="任意">
+          </label>
+        </div>
+
+        <div class="grid two">
+          <label>
+            <span>肩の痛み 0-10</span>
+            <input id="sessionPain" type="number" min="0" max="10" step="1" inputmode="numeric" value="0">
+          </label>
+          <label>
+            <span>メモ</span>
+            <input id="sessionNote" type="text" placeholder="右肩違和感、可動域浅め など">
+          </label>
+        </div>
+
+        <div class="chip-row" id="exerciseChips"></div>
+
+        <div class="grid set-entry">
+          <label>
+            <span>種目</span>
+            <input id="exerciseName" type="text" list="exerciseList" placeholder="ベンチプレス">
+            <datalist id="exerciseList"></datalist>
+          </label>
+          <label>
+            <span>重量(kg)</span>
+            <input id="weightKg" type="number" step="0.5" inputmode="decimal" placeholder="30">
+          </label>
+          <label>
+            <span>回数</span>
+            <input id="reps" type="number" step="1" inputmode="numeric" placeholder="10">
+          </label>
+          <label>
+            <span>セット数</span>
+            <input id="setsCount" type="number" step="1" inputmode="numeric" value="1">
+          </label>
+          <label>
+            <span>RIR</span>
+            <input id="rir" type="number" step="1" inputmode="numeric" placeholder="2">
+          </label>
+          <label>
+            <span>その種目の痛み</span>
+            <input id="setPain" type="number" min="0" max="10" step="1" inputmode="numeric" placeholder="0">
+          </label>
+          <label class="full">
+            <span>種目メモ</span>
+            <input id="setNote" type="text" placeholder="浅めに下ろす、最後きつい など">
+          </label>
+        </div>
+
+        <div class="action-row">
+          <button id="copyLastBtn" class="ghost" type="button">前回の同種目コピー</button>
+          <button id="addSetBtn" type="button">この種目を追加</button>
+        </div>
+
+        <section class="subpanel">
+          <div class="panel-header compact">
+            <h3>追加済み</h3>
+            <p class="muted" id="todaySummary">0種目</p>
+          </div>
+          <div id="entryList" class="entry-list empty-state">まだ何も追加していません。</div>
+        </section>
+
+        <div class="sticky-actions">
+          <button id="saveSessionBtn" class="primary" type="button">クラウドに保存</button>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="historyPanel">
+        <div class="panel-header">
+          <div>
+            <h2>履歴</h2>
+            <p class="muted">Supabaseから読み込み</p>
+          </div>
+          <button id="refreshBtn" class="ghost" type="button">再読込</button>
+        </div>
+        <div id="historyList" class="history-list empty-state">保存済みの記録はまだありません。</div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav hidden" id="bottomNav">
+      <button class="nav-btn active" data-target="todayPanel" type="button">今日</button>
+      <button class="nav-btn" data-target="historyPanel" type="button">履歴</button>
+    </nav>
+  </div>
+
+  <template id="entryItemTpl">
+    <article class="entry-card">
+      <div>
+        <h4></h4>
+        <p class="entry-meta"></p>
+        <p class="entry-note"></p>
+      </div>
+      <div class="entry-actions">
+        <button class="ghost small edit-entry" type="button">編集</button>
+        <button class="ghost small delete-entry" type="button">削除</button>
+      </div>
+    </article>
+  </template>
+
+  <template id="historyItemTpl">
+    <article class="history-card">
+      <div>
+        <h4></h4>
+        <p class="history-meta"></p>
+        <p class="history-note"></p>
+      </div>
+      <div class="entry-actions">
+        <button class="ghost small load-session" type="button">編集</button>
+        <button class="ghost small clone-session" type="button">複製</button>
+        <button class="ghost small delete-session" type="button">削除</button>
+      </div>
+    </article>
+  </template>
+
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
