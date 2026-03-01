@@ -1,4 +1,4 @@
-window.APP_CONFIG = {
-  SUPABASE_URL: 'https://YOUR_PROJECT.supabase.co',
-  SUPABASE_ANON_KEY: 'YOUR_PUBLISHABLE_OR_ANON_KEY'
+﻿window.APP_CONFIG = {
+  SUPABASE_URL: 'https://swpjifhucpwyjlzyxxew.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_UJincHgRhjiAeoOoykHxdw_avucolIV'
 };
