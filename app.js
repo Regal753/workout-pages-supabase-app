@@ -39,6 +39,7 @@ const el = {
   setNote: document.getElementById('setNote'),
   addSet: document.getElementById('addSetBtn'),
   copyLast: document.getElementById('copyLastBtn'),
+  quickAddLast: document.getElementById('quickAddLastBtn'),
   saveSession: document.getElementById('saveSessionBtn'),
   entryList: document.getElementById('entryList'),
   todaySummary: document.getElementById('todaySummary'),
@@ -54,6 +55,7 @@ const el = {
 
 const draftKey = 'workout-log-draft-v2';
 const presets = ['ベンチプレス', 'スクワット', 'レッグプレス', 'ラットプル', 'シーテッドロウ', 'チェストプレス', 'サイドレイズ', 'アームカール'];
+const recentExerciseLimit = 8;
 let currentUser = null;
 let currentSessionId = null;
 let entries = [];
@@ -79,6 +81,10 @@ function setLoading(message) {
   syncStatus.textContent = message;
 }
 
+function normalizeExerciseName(name = '') {
+  return name.trim().toLowerCase();
+}
+
 function normalizeEntry(entry) {
   return {
     exercise_name: (entry.exercise_name || '').trim(),
@@ -89,6 +95,70 @@ function normalizeEntry(entry) {
     pain_0_10: entry.pain_0_10 === '' || entry.pain_0_10 == null ? null : Number(entry.pain_0_10),
     note: (entry.note || '').trim()
   };
+}
+
+function updateSaveButtonState() {
+  const loggedIn = Boolean(currentUser);
+  if (!loggedIn) {
+    el.saveSession.disabled = true;
+    el.saveSession.title = 'ログインしてください';
+    return;
+  }
+  if (!entries.length) {
+    el.saveSession.disabled = true;
+    el.saveSession.title = '1種目以上追加すると保存できます';
+    return;
+  }
+  el.saveSession.disabled = false;
+  el.saveSession.title = '';
+}
+
+function stepPrecision(step) {
+  const txt = String(step);
+  return txt.includes('.') ? txt.split('.')[1].length : 0;
+}
+
+function adjustNumericInput(input, direction, fallbackStep) {
+  if (!input) return;
+  const step = Number(input.step || fallbackStep || 1);
+  const min = input.min === '' ? null : Number(input.min);
+  const max = input.max === '' ? null : Number(input.max);
+  const base = input.value === '' ? 0 : Number(input.value);
+  if (Number.isNaN(base) || Number.isNaN(step)) return;
+
+  let next = base + direction * step;
+  if (min != null && !Number.isNaN(min)) next = Math.max(min, next);
+  if (max != null && !Number.isNaN(max)) next = Math.min(max, next);
+  input.value = String(Number(next.toFixed(stepPrecision(step))));
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function createStepperButton(label, input, direction, fallbackStep) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'step-btn ghost';
+  btn.textContent = label;
+  btn.addEventListener('click', () => adjustNumericInput(input, direction, fallbackStep));
+  return btn;
+}
+
+function mountStepper(input, fallbackStep = 1) {
+  if (!input || input.dataset.stepperReady === '1') return;
+  const wrap = document.createElement('div');
+  wrap.className = 'num-stepper';
+  const minus = createStepperButton('-', input, -1, fallbackStep);
+  const plus = createStepperButton('+', input, 1, fallbackStep);
+  input.parentNode.insertBefore(wrap, input);
+  wrap.append(minus, input, plus);
+  input.dataset.stepperReady = '1';
+}
+
+function initNumericSteppers() {
+  mountStepper(el.weightKg, 0.5);
+  mountStepper(el.reps, 1);
+  mountStepper(el.setsCount, 1);
+  mountStepper(el.rir, 1);
+  mountStepper(el.setPain, 1);
 }
 
 function readDraft() {
@@ -178,11 +248,80 @@ function resetEntryForm() {
   editingEntryIndex = null;
 }
 
+function applyEntryToForm(entry, { overrideName } = {}) {
+  if (!entry) return;
+  el.exerciseName.value = overrideName ?? entry.exercise_name ?? '';
+  el.weightKg.value = entry.weight_kg ?? '';
+  el.reps.value = entry.reps ?? '';
+  el.setsCount.value = entry.sets ?? 1;
+  el.rir.value = entry.rir ?? '';
+  el.setPain.value = entry.pain_0_10 ?? '';
+  el.setNote.value = entry.note ?? '';
+}
+
+function recentExercises(limit = recentExerciseLimit) {
+  const seen = new Set();
+  const names = [];
+  for (const row of historyRows) {
+    for (const entry of row.entries || []) {
+      const name = (entry.exercise_name || '').trim();
+      const key = normalizeExerciseName(name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      names.push(name);
+      if (names.length >= limit) return names;
+    }
+  }
+  return names;
+}
+
+function findLatestEntryByName(exerciseName) {
+  const key = normalizeExerciseName(exerciseName);
+  if (!key) return null;
+
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    if (normalizeExerciseName(entries[i].exercise_name) === key) return normalizeEntry(entries[i]);
+  }
+
+  for (const row of historyRows) {
+    const match = (row.entries || []).find((x) => normalizeExerciseName(x.exercise_name || '') === key);
+    if (match) return normalizeEntry(match);
+  }
+  return null;
+}
+
+function upsertEntry(entry, { showUpdateToast = true } = {}) {
+  const key = normalizeExerciseName(entry.exercise_name);
+
+  if (editingEntryIndex != null) {
+    const activeIndex = editingEntryIndex;
+    entries.splice(activeIndex, 1, entry);
+    const duplicateIndex = entries.findIndex((x, idx) => idx !== activeIndex && normalizeExerciseName(x.exercise_name) === key);
+    if (duplicateIndex >= 0) {
+      entries.splice(duplicateIndex, 1);
+      if (showUpdateToast) toast('同じ種目があったため上書きしました');
+    }
+    editingEntryIndex = null;
+    return 'updated';
+  }
+
+  const duplicateIndex = entries.findIndex((x) => normalizeExerciseName(x.exercise_name) === key);
+  if (duplicateIndex >= 0) {
+    entries.splice(duplicateIndex, 1, entry);
+    if (showUpdateToast) toast('同じ種目があったため上書きしました');
+    return 'updated';
+  }
+
+  entries.push(entry);
+  return 'added';
+}
+
 function renderEntries() {
   if (!entries.length) {
     el.entryList.className = 'entry-list empty-state';
     el.entryList.textContent = 'まだ何も追加していません。';
     el.todaySummary.textContent = '0種目';
+    updateSaveButtonState();
     return;
   }
   el.entryList.className = 'entry-list';
@@ -195,13 +334,7 @@ function renderEntries() {
     node.querySelector('.entry-note').textContent = entry.note || 'メモなし';
     node.querySelector('.edit-entry').addEventListener('click', () => {
       editingEntryIndex = idx;
-      el.exerciseName.value = entry.exercise_name || '';
-      el.weightKg.value = entry.weight_kg ?? '';
-      el.reps.value = entry.reps ?? '';
-      el.setsCount.value = entry.sets ?? 1;
-      el.rir.value = entry.rir ?? '';
-      el.setPain.value = entry.pain_0_10 ?? '';
-      el.setNote.value = entry.note || '';
+      applyEntryToForm(entry);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
     node.querySelector('.delete-entry').addEventListener('click', () => {
@@ -212,6 +345,7 @@ function renderEntries() {
     el.entryList.appendChild(node);
   });
   el.todaySummary.textContent = `${entries.length}種目`;
+  updateSaveButtonState();
 }
 
 function renderHistory() {
@@ -264,12 +398,28 @@ function showPanel(targetId) {
 function renderChips() {
   el.chips.innerHTML = '';
   el.exerciseList.innerHTML = '';
-  presets.forEach(name => {
+  const merged = [];
+  const seen = new Set();
+  [...presets, ...recentExercises()].forEach((name) => {
+    const key = normalizeExerciseName(name);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    merged.push(name);
+  });
+
+  merged.forEach((name) => {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'chip';
+    if (!presets.some((preset) => normalizeExerciseName(preset) === normalizeExerciseName(name))) {
+      chip.classList.add('chip-recent');
+    }
     chip.textContent = name;
-    chip.addEventListener('click', () => { el.exerciseName.value = name; });
+    chip.addEventListener('click', () => {
+      el.exerciseName.value = name;
+      const last = findLatestEntryByName(name);
+      if (last) applyEntryToForm(last, { overrideName: name });
+    });
     el.chips.appendChild(chip);
 
     const opt = document.createElement('option');
@@ -292,6 +442,7 @@ async function loadHistory() {
     return;
   }
   historyRows = data || [];
+  renderChips();
   renderHistory();
   setLoading('保存先: Supabase / GitHub反映は自動同期');
 }
@@ -318,17 +469,38 @@ async function handleAuth(session) {
   appMain.classList.toggle('hidden', !loggedIn);
   bottomNav.classList.toggle('hidden', !loggedIn);
   signOutBtn.classList.toggle('hidden', !loggedIn);
+  updateSaveButtonState();
   if (loggedIn) {
     await loadHistory();
+    return;
   }
+  historyRows = [];
+  renderHistory();
+  renderChips();
 }
 
 async function saveSession() {
-  if (!currentUser) return;
-  if (!entries.length) {
-    toast('1種目以上追加してから保存してください', 'err');
+  if (!currentUser) {
+    toast('ログインが切れました。再ログインしてください', 'err');
+    setLoading('ログイン切れ: 再ログインしてください');
+    updateSaveButtonState();
     return;
   }
+  if (!entries.length) {
+    toast('1種目以上追加してから保存してください', 'err');
+    updateSaveButtonState();
+    return;
+  }
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !sessionData?.session) {
+    await handleAuth(null);
+    setLoading('ログイン切れ: 再ログインしてください');
+    toast('ログインが切れました。再ログインしてください', 'err');
+    return;
+  }
+  currentUser = sessionData.session.user;
+
   const payload = {
     user_id: currentUser.id,
     ...currentPayload()
@@ -341,6 +513,12 @@ async function saveSession() {
     result = await supabase.from('workout_logs').insert(payload).select('id').single();
   }
   if (result.error) {
+    if (/jwt|token|session/i.test(result.error.message || '')) {
+      await handleAuth(null);
+      setLoading('ログイン切れ: 再ログインしてください');
+      toast('ログインが切れました。再ログインしてください', 'err');
+      return;
+    }
     setLoading(`保存失敗: ${result.error.message}`);
     toast(`保存失敗: ${result.error.message}`, 'err');
     return;
@@ -358,18 +536,11 @@ async function copyLastExercise() {
     toast('先に種目名を入れてください', 'err');
     return;
   }
-  for (const row of historyRows) {
-    const match = (row.entries || []).find(x => x.exercise_name === exerciseName);
-    if (match) {
-      el.weightKg.value = match.weight_kg ?? '';
-      el.reps.value = match.reps ?? '';
-      el.setsCount.value = match.sets ?? 1;
-      el.rir.value = match.rir ?? '';
-      el.setPain.value = match.pain_0_10 ?? '';
-      el.setNote.value = match.note ?? '';
-      toast('前回の同種目をコピーしました');
-      return;
-    }
+  const match = findLatestEntryByName(exerciseName);
+  if (match) {
+    applyEntryToForm(match, { overrideName: exerciseName });
+    toast('前回の同種目をコピーしました');
+    return;
   }
   toast('同種目の履歴がありません', 'err');
 }
@@ -384,14 +555,37 @@ async function duplicateLastSession() {
   toast('前回内容を複製しました');
 }
 
+function quickAddFromLastValues() {
+  let exerciseName = el.exerciseName.value.trim();
+  if (!exerciseName) {
+    exerciseName = (entries[entries.length - 1]?.exercise_name || '').trim();
+  }
+  if (!exerciseName) {
+    exerciseName = (historyRows[0]?.entries?.[0]?.exercise_name || '').trim();
+  }
+  if (!exerciseName) {
+    toast('前回値がありません。先に種目を入力してください', 'err');
+    return;
+  }
+
+  const lastEntry = findLatestEntryByName(exerciseName);
+  if (!lastEntry) {
+    toast('同種目の履歴がありません', 'err');
+    return;
+  }
+
+  const entry = normalizeEntry({ ...lastEntry, exercise_name: exerciseName });
+  applyEntryToForm(entry, { overrideName: exerciseName });
+  const mode = upsertEntry(entry, { showUpdateToast: false });
+  renderEntries();
+  writeDraft();
+  toast(mode === 'updated' ? '前回値で更新しました' : '前回値で追加しました');
+}
+
 function addEntry() {
   const entry = formEntry();
   if (!entry) return;
-  if (editingEntryIndex != null) {
-    entries.splice(editingEntryIndex, 1, entry);
-  } else {
-    entries.push(entry);
-  }
+  upsertEntry(entry);
   renderEntries();
   resetEntryForm();
   writeDraft();
@@ -427,6 +621,8 @@ function bindInputs() {
 async function init() {
   renderChips();
   bootDraft();
+  initNumericSteppers();
+  updateSaveButtonState();
   bindNav();
   bindInputs();
   if ('serviceWorker' in navigator) {
@@ -440,6 +636,7 @@ async function init() {
   });
   el.addSet.addEventListener('click', addEntry);
   el.copyLast.addEventListener('click', copyLastExercise);
+  el.quickAddLast.addEventListener('click', quickAddFromLastValues);
   el.saveSession.addEventListener('click', saveSession);
   el.refresh.addEventListener('click', loadHistory);
   el.newSession.addEventListener('click', () => resetCurrentSession());

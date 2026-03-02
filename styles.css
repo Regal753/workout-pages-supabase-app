@@ -29,6 +29,24 @@ input {
   color: var(--text);
   padding: 12px 14px;
 }
+.num-stepper {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  gap: 8px;
+}
+.num-stepper input {
+  margin-top: 0;
+  text-align: center;
+  padding: 10px 8px;
+}
+.step-btn {
+  height: 42px;
+  border-radius: 10px;
+  padding: 0;
+  font-weight: 700;
+}
 label span { font-size: 13px; color: var(--muted); }
 button {
   border: none;
@@ -103,6 +121,9 @@ h3 { font-size: 18px; }
   border-radius: 999px;
   padding: 8px 12px;
   font-size: 13px;
+}
+.chip-recent {
+  border-color: #3b82f6;
 }
 .entry-list, .history-list {
   display: grid;
