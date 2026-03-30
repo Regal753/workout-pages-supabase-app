@@ -26,3 +26,4 @@
 ## 注意
 - このアプリは **保存ボタンを押したときだけクラウド保存**します。
 - GitHub / Obsidian への自動蓄積は **別 private repo (`workout-vault-sync`)** の workflow で行います。
+- `config.js` に入れる `SUPABASE_ANON_KEY` は公開用キーです。**RLS を有効にしたまま**、匿名ユーザーに必要な範囲だけ許可してください。
