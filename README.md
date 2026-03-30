@@ -25,4 +25,4 @@
 
 ## 注意
 - このアプリは **保存ボタンを押したときだけクラウド保存**します。
-- GitHub / Obsidian への自動蓄積は **別 repo (`workout-vault-sync-verified`)** の workflow で行います。
+- GitHub / Obsidian への自動蓄積は **別 private repo (`workout-vault-sync`)** の workflow で行います。
