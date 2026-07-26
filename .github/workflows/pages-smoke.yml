@@ -1,0 +1,19 @@
+name: Pages smoke and internal-link check
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "47 18 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    uses: Regal753/.github/.github/workflows/reusable-pages-smoke.yml@b256fcb7fc8de83327fca0f0b037d8af13bb587c
+    with:
+      site_url: https://regal753.github.io/workout-pages-supabase-app/
+      crawl_same_origin: true
+      max_links: 30

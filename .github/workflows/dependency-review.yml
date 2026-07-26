@@ -1,0 +1,13 @@
+name: Dependency review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    uses: Regal753/.github/.github/workflows/reusable-dependency-review.yml@b256fcb7fc8de83327fca0f0b037d8af13bb587c
+    with:
+      fail_on_severity: high
