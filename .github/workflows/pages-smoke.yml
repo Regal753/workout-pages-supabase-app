@@ -12,71 +12,8 @@ permissions:
 
 jobs:
   smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      SITE_URL: https://regal753.github.io/workout-pages-supabase-app/
-    steps:
-      - name: Check landing page and same-origin links
-        shell: bash
-        run: |
-          set -euo pipefail
-          node <<'NODE'
-          const base = new URL(process.env.SITE_URL);
-          const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-          async function request(url, method, attempts) {
-            let last = "unknown error";
-            for (let attempt = 1; attempt <= attempts; attempt += 1) {
-              const controller = new AbortController();
-              const timer = setTimeout(() => controller.abort(), 20000);
-              try {
-                const response = await fetch(url, {
-                  method,
-                  redirect: "follow",
-                  signal: controller.signal,
-                  headers: { "user-agent": "Regal753-Pages-Smoke/1.0" },
-                });
-                clearTimeout(timer);
-                if (response.ok) return response;
-                last = `HTTP ${response.status}`;
-              } catch (error) {
-                clearTimeout(timer);
-                last = String(error);
-              }
-              if (attempt < attempts) await wait(10000);
-            }
-            throw new Error(`${method} ${url} failed: ${last}`);
-          }
-
-          const home = await request(base.href, "GET", 12);
-          const html = await home.text();
-          if (!/<html(?:\s|>)/i.test(html)) throw new Error("Landing page is not HTML");
-
-          const urls = new Set();
-          for (const match of html.matchAll(/\b(?:href|src)=["']([^"'#]+)["']/gi)) {
-            try {
-              const url = new URL(match[1], base);
-              url.hash = "";
-              if (url.protocol === "https:" && url.origin === base.origin) urls.add(url.href);
-            } catch {}
-          }
-
-          const failures = [];
-          for (const url of [...urls].slice(0, 30)) {
-            try {
-              await request(url, "HEAD", 3);
-              console.log(`PASS ${url}`);
-            } catch {
-              try {
-                const response = await request(url, "GET", 3);
-                await response.body?.cancel();
-                console.log(`PASS ${url}`);
-              } catch (error) {
-                failures.push(String(error));
-              }
-            }
-          }
-          console.log(`Checked landing page and ${Math.min(urls.size, 30)} internal links`);
-          if (failures.length) throw new Error(failures.join("\n"));
-          NODE
+    uses: Regal753/.github/.github/workflows/reusable-pages-smoke.yml@b256fcb7fc8de83327fca0f0b037d8af13bb587c
+    with:
+      site_url: https://regal753.github.io/workout-pages-supabase-app/
+      crawl_same_origin: true
+      max_links: 30
